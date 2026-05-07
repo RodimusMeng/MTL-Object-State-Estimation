@@ -160,9 +160,10 @@ class MITStatesDataset(Dataset):
 
             for fname in sorted(os.listdir(folder_path)):
                 if fname.lower().endswith((".jpg", ".jpeg", ".png")):
-                    combo_to_paths[(obj_id, state_id)].append(
-                        os.path.join(folder_path, fname)
-                    )
+                    # 存绝对路径：避免 DataLoader worker 子进程 CWD 不一致问题
+                    abs_path = os.path.abspath(os.path.join(folder_path, fname))
+                    if os.path.isfile(abs_path):   # 过滤真实缺失的文件
+                        combo_to_paths[(obj_id, state_id)].append(abs_path)
 
         train_r, val_r, _ = self.split_ratio
         splits: Dict[str, List] = {"train": [], "val": [], "test": []}

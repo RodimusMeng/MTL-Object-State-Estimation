@@ -25,10 +25,10 @@ from datasets import build_dataloaders
 from models import build_model
 from utils import JointMTLoss, MTLMetrics
 
-
 # ─────────────────────────────────────────────────────────────
 #  配置工具
 # ─────────────────────────────────────────────────────────────
+
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -57,26 +57,27 @@ def set_seed(seed: int):
 #  优化器 & 调度器
 # ─────────────────────────────────────────────────────────────
 
+
 def build_optimizer(model: nn.Module, criterion: nn.Module, cfg: dict):
     """差分学习率：backbone 比分类头低 10 倍。"""
-    opt_cfg     = cfg["optimizer"]
-    lr          = float(opt_cfg["lr"])
+    opt_cfg = cfg["optimizer"]
+    lr = float(opt_cfg["lr"])
     backbone_lr = float(opt_cfg.get("backbone_lr", lr * 0.1))
-    wd          = float(opt_cfg.get("weight_decay", 1e-4))
+    wd = float(opt_cfg.get("weight_decay", 1e-4))
 
     param_groups = [
-        {"params": model.obj_head.parameters(),   "lr": lr},
+        {"params": model.obj_head.parameters(), "lr": lr},
         {"params": model.state_head.parameters(), "lr": lr},
-        {"params": [p for p in model.backbone.parameters()
-                    if p.requires_grad],           "lr": backbone_lr},
+        {"params": [p for p in model.backbone.parameters() if p.requires_grad], "lr": backbone_lr},
     ]
     # dynamic loss 的可学习方差参数也要优化
     if hasattr(criterion.loss_fn, "log_var_obj"):
-        param_groups.append({
-            "params": [criterion.loss_fn.log_var_obj,
-                       criterion.loss_fn.log_var_state],
-            "lr": lr,
-        })
+        param_groups.append(
+            {
+                "params": [criterion.loss_fn.log_var_obj, criterion.loss_fn.log_var_state],
+                "lr": lr,
+            }
+        )
 
     name = opt_cfg.get("name", "adamw").lower()
     if name == "adamw":
@@ -85,19 +86,19 @@ def build_optimizer(model: nn.Module, criterion: nn.Module, cfg: dict):
         return torch.optim.Adam(param_groups, weight_decay=wd)
     elif name == "sgd":
         return torch.optim.SGD(
-            param_groups, weight_decay=wd,
-            momentum=float(opt_cfg.get("momentum", 0.9)), nesterov=True)
+            param_groups, weight_decay=wd, momentum=float(opt_cfg.get("momentum", 0.9)), nesterov=True
+        )
     else:
         raise ValueError(f"不支持的优化器: {name}")
 
 
 def build_scheduler(optimizer, cfg: dict, num_batches: int):
-    sch_cfg   = cfg["scheduler"]
+    sch_cfg = cfg["scheduler"]
     train_cfg = cfg["training"]
-    name      = sch_cfg.get("name", "cosine").lower()
-    epochs    = int(train_cfg["epochs"])
-    warmup    = int(sch_cfg.get("warmup_epochs", 0))
-    min_lr    = float(sch_cfg.get("min_lr", 1e-6))
+    name = sch_cfg.get("name", "cosine").lower()
+    epochs = int(train_cfg["epochs"])
+    warmup = int(sch_cfg.get("warmup_epochs", 0))
+    min_lr = float(sch_cfg.get("min_lr", 1e-6))
 
     def warmup_lambda(step):
         total = warmup * num_batches
@@ -121,7 +122,8 @@ def build_scheduler(optimizer, cfg: dict, num_batches: int):
         )
     elif name == "plateau":
         main_sch = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="max",
+            optimizer,
+            mode="max",
             patience=int(sch_cfg.get("patience", 5)),
             factor=float(sch_cfg.get("factor", 0.5)),
             min_lr=min_lr,
@@ -136,26 +138,35 @@ def build_scheduler(optimizer, cfg: dict, num_batches: int):
 #  单 Epoch 训练
 # ─────────────────────────────────────────────────────────────
 
+
 def train_one_epoch(
-    model, loader, criterion, optimizer,
-    warmup_sch, main_sch, device, epoch, cfg,
-    global_step, warmup_steps, scheduler_name,
+    model,
+    loader,
+    criterion,
+    optimizer,
+    warmup_sch,
+    main_sch,
+    device,
+    epoch,
+    cfg,
+    global_step,
+    warmup_steps,
+    scheduler_name,
 ) -> Dict[str, float]:
     model.train()
-    metrics      = MTLMetrics()
-    total_loss   = 0.0
+    metrics = MTLMetrics()
+    total_loss = 0.0
     log_interval = int(cfg["training"].get("log_interval", 50))
-    grad_clip    = float(cfg["training"].get("grad_clip", 1.0))
+    grad_clip = float(cfg["training"].get("grad_clip", 1.0))
 
     for batch_idx, (images, obj_labels, state_labels) in enumerate(loader):
-        images       = images.to(device, non_blocking=True)
-        obj_labels   = obj_labels.to(device, non_blocking=True)
+        images = images.to(device, non_blocking=True)
+        obj_labels = obj_labels.to(device, non_blocking=True)
         state_labels = state_labels.to(device, non_blocking=True)
 
         optimizer.zero_grad()
-        out       = model(images)
-        loss_dict = criterion(out["obj_logits"], out["state_logits"],
-                              obj_labels, state_labels)
+        out = model(images)
+        loss_dict = criterion(out["obj_logits"], out["state_logits"], obj_labels, state_labels)
         loss_dict["loss"].backward()
 
         if grad_clip > 0:
@@ -172,9 +183,7 @@ def train_one_epoch(
         global_step[0] += 1
 
         total_loss += loss_dict["loss"].item()
-        metrics.update(out["obj_logits"].detach(),
-                       out["state_logits"].detach(),
-                       obj_labels, state_labels)
+        metrics.update(out["obj_logits"].detach(), out["state_logits"].detach(), obj_labels, state_labels)
 
         if (batch_idx + 1) % log_interval == 0:
             m = metrics.compute()
@@ -196,23 +205,22 @@ def train_one_epoch(
 #  验证
 # ─────────────────────────────────────────────────────────────
 
+
 @torch.no_grad()
 def validate(model, loader, criterion, device) -> Dict[str, float]:
     model.eval()
-    metrics    = MTLMetrics()
+    metrics = MTLMetrics()
     total_loss = 0.0
 
     for images, obj_labels, state_labels in loader:
-        images       = images.to(device, non_blocking=True)
-        obj_labels   = obj_labels.to(device, non_blocking=True)
+        images = images.to(device, non_blocking=True)
+        obj_labels = obj_labels.to(device, non_blocking=True)
         state_labels = state_labels.to(device, non_blocking=True)
 
-        out       = model(images)
-        loss_dict = criterion(out["obj_logits"], out["state_logits"],
-                              obj_labels, state_labels)
+        out = model(images)
+        loss_dict = criterion(out["obj_logits"], out["state_logits"], obj_labels, state_labels)
         total_loss += loss_dict["loss"].item()
-        metrics.update(out["obj_logits"], out["state_logits"],
-                       obj_labels, state_labels)
+        metrics.update(out["obj_logits"], out["state_logits"], obj_labels, state_labels)
 
     result = metrics.compute()
     result["loss"] = total_loss / len(loader)
@@ -223,6 +231,7 @@ def validate(model, loader, criterion, device) -> Dict[str, float]:
 #  主训练循环
 # ─────────────────────────────────────────────────────────────
 
+
 def train(cfg: dict):
     set_seed(cfg.get("seed", 42))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -231,16 +240,16 @@ def train(cfg: dict):
     # ── 数据 ─────────────────────────────────────────────────
     data_cfg = cfg["data"]
     train_loader, val_loader, _, train_ds = build_dataloaders(
-        root        = data_cfg["root"],
-        batch_size  = int(data_cfg["batch_size"]),
-        num_workers = int(data_cfg.get("num_workers", 4)),
-        split_ratio = tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
-        seed        = int(data_cfg.get("seed", 42)),
-        min_samples = int(data_cfg.get("min_samples", 2)),
-        pin_memory  = bool(data_cfg.get("pin_memory", True)),
+        root=data_cfg["root"],
+        batch_size=int(data_cfg["batch_size"]),
+        num_workers=int(data_cfg.get("num_workers", 4)),
+        split_ratio=tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
+        seed=int(data_cfg.get("seed", 42)),
+        min_samples=int(data_cfg.get("min_samples", 2)),
+        pin_memory=bool(data_cfg.get("pin_memory", True)),
     )
     num_objects = train_ds.num_objects
-    num_states  = train_ds.num_states
+    num_states = train_ds.num_states
     print(f"[train] #objects={num_objects} | #states={num_states}")
 
     # ── 模型 ─────────────────────────────────────────────────
@@ -254,31 +263,29 @@ def train(cfg: dict):
         obj_w, state_w = obj_w.to(device), state_w.to(device)
 
     criterion = JointMTLoss(
-        mode            = loss_cfg.get("mode", "static"),
-        alpha           = float(loss_cfg.get("alpha", 0.5)),
-        obj_weight      = obj_w,
-        state_weight    = state_w,
-        label_smoothing = float(loss_cfg.get("label_smoothing", 0.0)),
+        mode=loss_cfg.get("mode", "static"),
+        alpha=float(loss_cfg.get("alpha", 0.5)),
+        obj_weight=obj_w,
+        state_weight=state_w,
+        label_smoothing=float(loss_cfg.get("label_smoothing", 0.0)),
     ).to(device)
 
     # ── 优化器 & 调度器 ───────────────────────────────────────
     optimizer = build_optimizer(model, criterion, cfg)
-    warmup_sch, main_sch, scheduler_name, warmup_epochs = build_scheduler(
-        optimizer, cfg, len(train_loader)
-    )
+    warmup_sch, main_sch, scheduler_name, warmup_epochs = build_scheduler(optimizer, cfg, len(train_loader))
     warmup_steps = warmup_epochs * len(train_loader)
 
     # ── 训练状态 ──────────────────────────────────────────────
-    train_cfg          = cfg["training"]
-    epochs             = int(train_cfg["epochs"])
-    unfreeze_epoch     = int(train_cfg.get("unfreeze_epoch", 5))
+    train_cfg = cfg["training"]
+    epochs = int(train_cfg["epochs"])
+    unfreeze_epoch = int(train_cfg.get("unfreeze_epoch", 5))
     early_stop_patience = int(train_cfg.get("early_stop_patience", 10))
-    ckpt_dir           = train_cfg.get("checkpoint_dir", "./checkpoints")
+    ckpt_dir = train_cfg.get("checkpoint_dir", "./checkpoints")
     os.makedirs(ckpt_dir, exist_ok=True)
 
-    best_joint_acc  = 0.0
+    best_joint_acc = 0.0
     patience_counter = 0
-    global_step     = [0]
+    global_step = [0]
 
     print(f"\n{'='*60}")
     print(f"开始训练 | epochs={epochs} | batch={data_cfg['batch_size']}")
@@ -293,9 +300,18 @@ def train(cfg: dict):
             model.unfreeze_backbone(unfreeze_layers=n if n else None)
 
         train_m = train_one_epoch(
-            model, train_loader, criterion, optimizer,
-            warmup_sch, main_sch, device, epoch, cfg,
-            global_step, warmup_steps, scheduler_name,
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            warmup_sch,
+            main_sch,
+            device,
+            epoch,
+            cfg,
+            global_step,
+            warmup_steps,
+            scheduler_name,
         )
         val_m = validate(model, val_loader, criterion, device)
 
@@ -312,15 +328,18 @@ def train(cfg: dict):
 
         is_best = val_m["joint_acc"] > best_joint_acc
         if is_best:
-            best_joint_acc   = val_m["joint_acc"]
+            best_joint_acc = val_m["joint_acc"]
             patience_counter = 0
-            ckpt_path        = os.path.join(ckpt_dir, "best_model.pt")
-            model.save_checkpoint(ckpt_path, extra={
-                "epoch":       epoch,
-                "val_metrics": val_m,
-                "obj2id":      train_ds.obj2id,
-                "state2id":    train_ds.state2id,
-            })
+            ckpt_path = os.path.join(ckpt_dir, "best_model.pt")
+            model.save_checkpoint(
+                ckpt_path,
+                extra={
+                    "epoch": epoch,
+                    "val_metrics": val_m,
+                    "obj2id": train_ds.obj2id,
+                    "state2id": train_ds.state2id,
+                },
+            )
             print(f"  ✓ best checkpoint (joint_acc={best_joint_acc:.4f})")
         else:
             patience_counter += 1
@@ -342,17 +361,17 @@ def train(cfg: dict):
 #  入口
 # ─────────────────────────────────────────────────────────────
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="MIT States MTL Training")
     parser.add_argument("--config", default="configs/default.yaml")
-    parser.add_argument("overrides", nargs="*",
-                        help="key=value 覆盖，如 model.backbone=resnet18")
+    parser.add_argument("overrides", nargs="*", help="key=value 覆盖，如 model.backbone=resnet18")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    cfg  = load_config(args.config)
+    cfg = load_config(args.config)
     for ov in args.overrides:
         if "=" in ov:
             k, v = ov.split("=", 1)
