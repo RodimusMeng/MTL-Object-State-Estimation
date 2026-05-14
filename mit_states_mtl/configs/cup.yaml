@@ -1,0 +1,59 @@
+# ============================================================
+#  杯子状态 MTL — 训练配置
+#  任务: orientation(3类) + fill level(4类)
+# ============================================================
+
+# ── 数据 ────────────────────────────────────────────────────
+data:
+  type:      "cup"
+  csv:       "datasets/cup_dataset.csv"
+  img_dir:   "datasets/cup_selected"
+  batch_size: 32
+  num_workers: 4
+  split_ratio: [0.70, 0.15, 0.15]
+  seed: 42
+  pin_memory: true
+
+# ── 模型 ────────────────────────────────────────────────────
+# obj_head  → orientation (3类: upright/sideways/inverted)
+# state_head → fill level  (4类: empty/half/full/N/A)
+model:
+  backbone: "resnet18"       # 杯子任务用轻量模型，比 resnet50 快 3x
+  pretrained: true
+  head_hidden_dim: 256
+  head_dropout: 0.3
+  freeze_backbone: true      # 前 unfreeze_epoch 只训练分类头
+
+# ── 损失函数 ─────────────────────────────────────────────────
+loss:
+  mode: "static"
+  alpha: 0.5                 # orientation 和 fill 各占 50%
+  use_class_weights: true    # 处理类别不平衡（upright 样本远多于 sideways/inverted）
+  label_smoothing: 0.1
+
+# ── 优化器 ───────────────────────────────────────────────────
+optimizer:
+  name: "adamw"
+  lr: 1.0e-3                 # 分类头（比 MIT States 任务可以更高）
+  backbone_lr: 1.0e-4
+  weight_decay: 1.0e-4
+
+# ── 学习率调度 ───────────────────────────────────────────────
+scheduler:
+  name: "cosine"
+  warmup_epochs: 3
+  min_lr: 1.0e-6
+
+# ── 训练控制 ─────────────────────────────────────────────────
+training:
+  epochs: 80
+  unfreeze_epoch: 5
+  unfreeze_layers: 2         # 只解冻 layer4 + avgpool，防过拟合
+  grad_clip: 1.0
+  early_stop_patience: 15
+  log_interval: 30
+  checkpoint_dir: "./checkpoints_cup"
+  save_best_only: true
+
+# ── 随机种子 ─────────────────────────────────────────────────
+seed: 42

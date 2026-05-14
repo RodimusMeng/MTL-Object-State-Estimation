@@ -21,7 +21,7 @@ import torch.nn as nn
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from datasets import build_dataloaders
+from datasets import build_dataloaders, build_cup_dataloaders
 from models import build_model
 from utils import JointMTLoss, MTLMetrics
 
@@ -238,19 +238,33 @@ def train(cfg: dict):
     print(f"[train] 设备: {device}")
 
     # ── 数据 ─────────────────────────────────────────────────
-    data_cfg = cfg["data"]
-    train_loader, val_loader, _, train_ds = build_dataloaders(
-        root=data_cfg["root"],
-        batch_size=int(data_cfg["batch_size"]),
-        num_workers=int(data_cfg.get("num_workers", 4)),
-        split_ratio=tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
-        seed=int(data_cfg.get("seed", 42)),
-        min_samples=int(data_cfg.get("min_samples", 2)),
-        pin_memory=bool(data_cfg.get("pin_memory", True)),
-    )
+    data_cfg  = cfg["data"]
+    data_type = data_cfg.get("type", "mit_states")
+
+    if data_type == "cup":
+        train_loader, val_loader, _, train_ds = build_cup_dataloaders(
+            csv_path=data_cfg["csv"],
+            img_dir=data_cfg["img_dir"],
+            batch_size=int(data_cfg["batch_size"]),
+            num_workers=int(data_cfg.get("num_workers", 4)),
+            split_ratio=tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
+            seed=int(data_cfg.get("seed", 42)),
+            pin_memory=bool(data_cfg.get("pin_memory", True)),
+        )
+    else:
+        train_loader, val_loader, _, train_ds = build_dataloaders(
+            root=data_cfg["root"],
+            batch_size=int(data_cfg["batch_size"]),
+            num_workers=int(data_cfg.get("num_workers", 4)),
+            split_ratio=tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
+            seed=int(data_cfg.get("seed", 42)),
+            min_samples=int(data_cfg.get("min_samples", 2)),
+            pin_memory=bool(data_cfg.get("pin_memory", True)),
+        )
+
     num_objects = train_ds.num_objects
-    num_states = train_ds.num_states
-    print(f"[train] #objects={num_objects} | #states={num_states}")
+    num_states  = train_ds.num_states
+    print(f"[train] type={data_type} | #head_A={num_objects} | #head_B={num_states}")
 
     # ── 模型 ─────────────────────────────────────────────────
     model = build_model(num_objects, num_states, cfg["model"]).to(device)
