@@ -1,0 +1,57 @@
+# ============================================================
+#  MIT States MTL — 强正则化配置（防过拟合）
+#  改动点：freeze_backbone / dropout↑ / head_dim↓ /
+#          weight_decay↑ / dynamic loss / label_smoothing↑ /
+#          epochs↑ / unfreeze_layers 限制 / early_stop↑
+# ============================================================
+
+# ── 数据 ────────────────────────────────────────────────────
+data:
+  root: "./datasets/release_dataset"
+  batch_size: 64
+  num_workers: 4
+  split_ratio: [0.70, 0.15, 0.15]
+  seed: 42
+  min_samples: 2
+  pin_memory: true
+
+# ── 模型 ────────────────────────────────────────────────────
+model:
+  backbone: "resnet50"
+  pretrained: true
+  head_hidden_dim: 256       # 512 → 256，减少头部参数量
+  head_dropout: 0.6          # 0.5 → 0.6，更强 dropout
+  freeze_backbone: true      # 前 N epoch 冻结 backbone，只训分类头
+
+# ── 损失函数 ─────────────────────────────────────────────────
+loss:
+  mode: "dynamic"            # Kendall 不确定性加权，自动平衡 obj/state
+  use_class_weights: true
+  label_smoothing: 0.15      # 0.1 → 0.15，软化标签
+
+# ── 优化器 ───────────────────────────────────────────────────
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4                 # 头部学习率提高（backbone 冻结时头部需要更快收敛）
+  backbone_lr: 1.0e-5        # 解冻后 backbone 保持保守
+  weight_decay: 5.0e-4       # 1e-4 → 5e-4，L2 惩罚加强
+
+# ── 学习率调度 ───────────────────────────────────────────────
+scheduler:
+  name: "cosine"
+  warmup_epochs: 5           # 3 → 5，给冻结阶段更充分的 warmup
+  min_lr: 1.0e-6
+
+# ── 训练控制 ─────────────────────────────────────────────────
+training:
+  epochs: 80                 # 50 → 80，正则化变强后收敛变慢需要更多轮次
+  unfreeze_epoch: 12         # 前 12 epoch 只训头，之后解冻 backbone
+  unfreeze_layers: 2         # 只解冻最后 2 个 block（layer3/layer4），不全开
+  grad_clip: 0.5             # 1.0 → 0.5，更保守的梯度裁剪
+  early_stop_patience: 20    # 10 → 20，给模型更多爬升空间
+  log_interval: 50
+  checkpoint_dir: "./checkpoints_reg"   # 单独目录，不覆盖原来的 best
+  save_best_only: true
+
+# ── 随机种子 ─────────────────────────────────────────────────
+seed: 42
