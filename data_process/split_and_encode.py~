@@ -1,0 +1,38 @@
+import os
+import json
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+# 读取已解析的标注
+df = pd.read_csv("processed/all_annotations.csv")
+
+# 生成映射
+object_names = sorted(df['object_name'].unique())
+state_names = sorted(df['state_name'].unique())
+object2id = {name: i for i, name in enumerate(object_names)}
+state2id = {name: i for i, name in enumerate(state_names)}
+
+with open("classes_object.json", "w") as f:
+    json.dump(object2id, f, indent=2)
+with open("classes_state.json", "w") as f:
+    json.dump(state2id, f, indent=2)
+
+# 添加 id 列
+df['object_id'] = df['object_name'].map(object2id)
+df['state_id'] = df['state_name'].map(state2id)
+
+# 分层划分
+y = df['object_name'] + "_" + df['state_name']
+X_temp, X_test, y_temp, y_test = train_test_split(
+    df, y, test_size=0.1, random_state=42, stratify=y
+)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=1/9, random_state=42, stratify=y_temp
+)
+
+for split_name, split_df in zip(['train', 'val', 'test'], [X_train, X_val, X_test]):
+    out_cols = ['image_path', 'object_id', 'state_id', 'object_name', 'state_name']
+    split_df[out_cols].to_csv(f"{split_name}.csv", index=False)
+    print(f"{split_name}.csv : {len(split_df)} 条")
+
+print("完成")
