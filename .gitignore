@@ -1,6 +1,6 @@
 mit_states_mtl/datasets/release_dataset/
-mit_states_mtl/datasets/cup_selected/
-mit_states_mtl/datasets/cup_yolo/
+mit_states_mtl/datasets/cup/
+mit_states_mtl/datasets/cup_other/
 
 # 忽略模型权重和缓存
 *.pth

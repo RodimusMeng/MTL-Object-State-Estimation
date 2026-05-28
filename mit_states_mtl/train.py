@@ -244,7 +244,6 @@ def train(cfg: dict):
     if data_type == "cup":
         train_loader, val_loader, _, train_ds = build_cup_dataloaders(
             csv_path=data_cfg["csv"],
-            img_dir=data_cfg["img_dir"],
             batch_size=int(data_cfg["batch_size"]),
             num_workers=int(data_cfg.get("num_workers", 4)),
             split_ratio=tuple(data_cfg.get("split_ratio", [0.7, 0.15, 0.15])),
