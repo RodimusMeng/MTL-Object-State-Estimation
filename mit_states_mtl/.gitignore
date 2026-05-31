@@ -1,4 +1,24 @@
-mit_states_mtl/datasets/release_dataset/
+# ── 大型数据集（不入库）──────────────────────────────────
+datasets/VG_images/
+datasets/OSDD/
+datasets/vaw_repo/
+datasets/vaw_features/
+datasets/archive/
+# czsl 复现：仅入库代码，数据/权重不入库
+czsl_csp/data/
+czsl_csp/.git/
+
+# ── 模型权重 ─────────────────────────────────────────────
+weights/
+*.pt
+*.pth
+*.onnx
+
+# ── 训练输出 ─────────────────────────────────────────────
+runs/
+
+# ── 缓存 ─────────────────────────────────────────────────
+datasets/**/*.cache
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
