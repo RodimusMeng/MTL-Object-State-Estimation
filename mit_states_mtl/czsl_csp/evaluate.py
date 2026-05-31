@@ -30,9 +30,9 @@ from tqdm import tqdm
 
 from clip_modules.interface import CLIPInterface
 from clip_modules.model_loader import load
-from datasets.composition_dataset import CompositionDataset
-from datasets.read_datasets import DATASET_PATHS
-from models.compositional_modules import get_model
+from csp_data.composition_dataset import CompositionDataset
+from csp_data.read_datasets import DATASET_PATHS
+from csp_models.compositional_modules import get_model
 
 cudnn.benchmark = True
 

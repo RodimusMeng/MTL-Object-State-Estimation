@@ -25,9 +25,9 @@ import tqdm
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data.dataloader import DataLoader
 
-from datasets.composition_dataset import CompositionDataset
-from datasets.read_datasets import DATASET_PATHS
-from models.compositional_modules import get_model
+from csp_data.composition_dataset import CompositionDataset
+from csp_data.read_datasets import DATASET_PATHS
+from csp_models.compositional_modules import get_model
 from utils import set_seed
 
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))

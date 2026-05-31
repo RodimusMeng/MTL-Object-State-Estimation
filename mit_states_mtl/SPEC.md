@@ -45,20 +45,20 @@ VAW        → 测"能不能处理真实世界的多标签属性"（规模和多
 
 | 编号 | 名称 | 模型 | 骨干 | 训练方式 | Seen | Unseen | HM | AUC |
 |---|---|---|---|---|---|---|---|---|
-| Exp A | ResNet MTL 基线 | 共享骨干 + 双分类头 | ResNet50 | 全微调 | ~35%* | **≈0%** | **≈0** | — |
-| **Exp C** | **CLIP 零样本** | **CLIP** | **ViT-B/16** | **无训练** | **28.2%** | **41.1%** | **23.6** | **8.97** |
-| **Exp B** | **CSP（我们复现）** | **组合软提示** | **ViT-B/16** | **提示微调（骨干冻结）** | **43.0%** | **46.3%** | **33.0** | **16.25** |
+| 实验1 | ResNet MTL 基线 | 共享骨干 + 双分类头 | ResNet50 | 全微调 | ~35%* | **≈0%** | **≈0** | — |
+| **实验2** | **CLIP 零样本** | **CLIP** | **ViT-B/16** | **无训练** | **28.2%** | **41.1%** | **23.6** | **8.97** |
+| **实验3** | **CSP（我们复现）** | **组合软提示** | **ViT-B/16** | **提示微调（骨干冻结）** | **43.0%** | **46.3%** | **33.0** | **16.25** |
 | 参考：CSP 官方 | 原论文 | 组合软提示 | ViT-L/14 | 提示微调 | 46.6% | 49.9% | 36.3 | 19.4 |
 | 参考：CAMS SOTA | 2025 | 门控交叉注意力+多空间 | ViT-L/14 | 架构微调 | 53.0% | 54.3% | 41.0 | 24.2 |
 
-> *Exp A 的 35% 是 joint_acc（闭集多分类），与 CZSL 指标不可直接相减，见第五节。
+> *实验1 的 35% 是 joint_acc（闭集多分类），与 CZSL 指标不可直接相减，见第五节。
 
 ### 3.2 VAW 实验
 
 | 编号 | 名称 | 模型 | 骨干 | 训练方式 | test mAP | test obj_acc |
 |---|---|---|---|---|---|---|
-| Exp E | 物体条件化（物体作输入） | YOLOv8m + 门控 | YOLOv8m-cls | 全微调 | **60.6%** | — |
-| Exp F | 联合预测 MTL（物体作输出） | DINOv2 + 双头 | DINOv2 ViT-S | 冻结特征+头微调 | **55.3%** | **35.4%** |
+| 实验4 | 物体条件化（物体作输入） | YOLOv8m + 门控 | YOLOv8m-cls | 全微调 | **60.6%** | — |
+| 实验5 | 联合预测 MTL（物体作输出） | DINOv2 + 双头 | DINOv2 ViT-S | 冻结特征+头微调 | **55.3%** | **35.4%** |
 | 参考：ResNet Baseline | 原论文 | ResNet | ResNet | 微调 | 63.0% | — |
 | 参考：SCoNE SOTA | 原论文 | SCoNE | ResNet | 微调+对比 | 68.3% | — |
 
@@ -66,7 +66,7 @@ VAW        → 测"能不能处理真实世界的多标签属性"（规模和多
 
 ## 四、每个模型的架构与原理（报告方法节素材）
 
-### 4.1 Exp A：ResNet MTL 基线
+### 4.1 实验1：ResNet MTL 基线（MIT-States）
 
 **架构**：
 ```
@@ -78,7 +78,7 @@ VAW        → 测"能不能处理真实世界的多标签属性"（规模和多
   → 联合损失：L = α·L_obj + (1-α)·L_state（交叉熵）
 ```
 
-**核心思想**：共享特征提取，任务解耦双分支，梯度在共享骨干处交汇——这是多任务学习（MTL）的标准范式。
+**核心思想**：共享特征提取，任务解耦双分支，梯度在共享骨干处交汇——这是多任务学习（MTL）的标准范式，也是本项目的起点。
 
 **问题**：物体和状态是 1890 个复合类别的独立识别，不具备组合泛化能力；MIT-States 标签噪声大，长尾严重，导致 joint_acc 仅 35%，Unseen ≈ 0%。
 
@@ -86,58 +86,7 @@ VAW        → 测"能不能处理真实世界的多标签属性"（规模和多
 
 ---
 
-### 4.2 Exp E：YOLOv8m + 物体门控（VAW）
-
-**架构**：
-```
-输入图像 [B,3,224,224]
-  → YOLOv8m-cls 骨干（冻结2个epoch后全微调）→ 1280维特征
-  → 物体ID → Embedding(762,128) → MLP门控 [128→256→1280] → sigmoid
-  → 特征 ⊙ 门控（逐元素相乘，论文Eq.1）
-  → 属性头：Linear(1280,512)→BN→SiLU→Dropout(0.4)→Linear(512,610)
-  → 输出：610维属性 logits（多标签）
-```
-
-**核心思想**：物体名作为**输入条件**（而非预测目标），通过可学习 embedding + MLP 生成门控向量，调制图像特征——让同一张图在不同物体语境下激活不同特征维度。
-
-**损失**：RW-BCE（论文 Eq.13），对稀有属性上调权重，缺失标签作软负样本（权重 0.05）。
-
-**结果**：val mAP 70.9%（过拟合），test mAP 60.6%（低于论文 baseline 63.0%）。
-
-**代码**：`train_vaw_mtl.py` + `models/yolo_mtl.py`，数据：`datasets/vaw_dataset.py`
-
----
-
-### 4.3 Exp F：DINOv2 + 真·MTL 双头（VAW）
-
-**架构**：
-```
-DINOv2 ViT-S/14（完全冻结）
-  → 预提取 384 维特征，缓存到磁盘（datasets/vaw_features/）
-
-冻结特征 [B, 384]
-  → 共享 Trunk：Linear(384,512)→BN→GELU→Dropout(0.4)
-  → 物体头：Linear(512, 762)    ← 预测物体类别
-  → 属性头：Linear(512, 610)    ← 预测属性（多标签）
-  → Kendall 不确定性加权联合损失：
-      L = exp(-σ_obj)·L_obj + 0.5·σ_obj
-        + exp(-σ_attr)·L_attr + 0.5·σ_attr
-      （σ 可学习，自动平衡两个任务的量级）
-```
-
-**核心思想**：真正的 MTL——物体和属性同时作为输出目标，梯度在共享 Trunk 交汇。骨干完全冻结（DINOv2 自监督预训练特征），只训练头部，适配笔记本显存。
-
-**问题**：冻结特征不适配属性识别细粒度需求；Kendall 加权自动将物体任务权重压到 0.27，属性权重拉到 8.84，导致物体支 acc 仅 35.4%。
-
-**结果**：test attr_mAP 55.3%，test obj_acc 35.4%，均低于 Exp E。
-
-**结论意义**：**微调 > 冻结**（Exp E 60.6% > Exp F 55.3%），且**物体条件化 > 物体联合预测**（与 VAW 原论文结论一致）。
-
-**代码**：`datasets/extract_dino_features.py` + `train_mtl_feats.py` + `models/feat_mtl.py`
-
----
-
-### 4.4 Exp C：CLIP 零样本基线（MIT-States）
+### 4.2 实验2：CLIP 零样本基线（MIT-States）
 
 **架构**：
 ```
@@ -151,11 +100,11 @@ CLIP ViT-B/16（完全冻结，无任何训练）
 
 **结果**：AUC 8.97，Seen 28.2%，Unseen 41.1%，HM 23.6。
 
-**意义**：作为"不训练的上界"——展示 CLIP 的先验知识有多强，以及提示微调（CSP）相对于零样本能提升多少。
+**意义**：作为"不训练的下界/参照"——展示 CLIP 的先验知识有多强，以及提示微调（实验3 CSP）相对于零样本能提升多少。
 
 ---
 
-### 4.5 Exp B：CSP 组合软提示（MIT-States）—— 核心实验
+### 4.3 实验3：CSP 组合软提示（MIT-States）—— 核心实验
 
 **架构**（论文：Nayak et al., ICLR 2023）：
 ```
@@ -181,13 +130,64 @@ CLIP ViT-B/16（完全冻结，骨干不参与训练）
 
 **关键设计意图**：每个属性词和物体词不再用 CLIP 原始 word embedding，而是一个**可学习的连续向量**，在训练中学到视觉感知的语义（"wet"在视觉上是什么样）。组合时直接拼接——组合泛化是**免费的**，因为两个向量独立学习。
 
-**与 Exp A（ResNet）的本质区别**：
+**与 实验1（ResNet）的本质区别**：
 - ResNet 把每个组合当独立类别 → 没见过的组合 = 0分
 - CSP 把属性和物体分开学 → 见过的属性 + 见过的物体 = 可以组合推理
 
 **结果**：AUC 16.25，Seen 43.0%，Unseen 46.3%，HM 33.0（ViT-B/16，骨干比论文小）
 
 **代码**：`czsl_csp/`（基于官方代码适配 Windows + torch 2.7）
+
+---
+
+### 4.4 实验4：YOLOv8m + 物体门控（VAW）
+
+**架构**：
+```
+输入图像 [B,3,224,224]
+  → YOLOv8m-cls 骨干（冻结2个epoch后全微调）→ 1280维特征
+  → 物体ID → Embedding(762,128) → MLP门控 [128→256→1280] → sigmoid
+  → 特征 ⊙ 门控（逐元素相乘，论文Eq.1）
+  → 属性头：Linear(1280,512)→BN→SiLU→Dropout(0.4)→Linear(512,610)
+  → 输出：610维属性 logits（多标签）
+```
+
+**核心思想**：物体名作为**输入条件**（而非预测目标），通过可学习 embedding + MLP 生成门控向量，调制图像特征——让同一张图在不同物体语境下激活不同特征维度。
+
+**损失**：RW-BCE（论文 Eq.13），对稀有属性上调权重，缺失标签作软负样本（权重 0.05）。
+
+**结果**：val mAP 70.9%（过拟合），test mAP 60.6%（低于论文 baseline 63.0%）。
+
+**代码**：`train_vaw_mtl.py` + `models/yolo_mtl.py`，数据：`datasets/vaw_dataset.py`
+
+---
+
+### 4.5 实验5：DINOv2 + 真·MTL 双头（VAW）
+
+**架构**：
+```
+DINOv2 ViT-S/14（完全冻结）
+  → 预提取 384 维特征，缓存到磁盘（datasets/vaw_features/）
+
+冻结特征 [B, 384]
+  → 共享 Trunk：Linear(384,512)→BN→GELU→Dropout(0.4)
+  → 物体头：Linear(512, 762)    ← 预测物体类别
+  → 属性头：Linear(512, 610)    ← 预测属性（多标签）
+  → Kendall 不确定性加权联合损失：
+      L = exp(-σ_obj)·L_obj + 0.5·σ_obj
+        + exp(-σ_attr)·L_attr + 0.5·σ_attr
+      （σ 可学习，自动平衡两个任务的量级）
+```
+
+**核心思想**：真正的 MTL——物体和属性同时作为输出目标，梯度在共享 Trunk 交汇。骨干完全冻结（DINOv2 自监督预训练特征），只训练头部，适配笔记本显存。
+
+**问题**：冻结特征不适配属性识别细粒度需求；Kendall 加权自动将物体任务权重压到 0.27，属性权重拉到 8.84，导致物体支 acc 仅 35.4%。
+
+**结果**：test attr_mAP 55.3%，test obj_acc 35.4%，均低于 实验4。
+
+**结论意义**：**微调 > 冻结**（实验4 60.6% > 实验5 55.3%），且**物体条件化 > 物体联合预测**（与 VAW 原论文结论一致）。
+
+**代码**：`datasets/extract_dino_features.py` + `train_mtl_feats.py` + `models/feat_mtl.py`
 
 ---
 
@@ -204,9 +204,9 @@ CLIP ViT-B/16（完全冻结，骨干不参与训练）
 | **HM** | 2SU/(S+U)，调和均值 | 主指标：惩罚只会背训练集的模型（若 U≈0，HM≈0） |
 | **AUC** | 扫偏置参数，Seen/Unseen 权衡曲线下面积 | 不依赖单一阈值，更鲁棒 |
 
-### 5.2 为什么 Exp A 的 35% 不能和 CZSL 指标直接比
+### 5.2 为什么 实验1 的 35% 不能和 CZSL 指标直接比
 
-- Exp A joint_acc：全量闭集分类，1890 个类别，包含全部训练和测试组合
+- 实验1 joint_acc：全量闭集分类，1890 个类别，包含全部训练和测试组合
 - CZSL Seen acc：只在测试集中标签属于训练组合的子集上评估
 - 两者分母不同，不可直接相减。报告中分开呈现，用定性对比。
 
@@ -224,10 +224,10 @@ CLIP ViT-B/16（完全冻结，骨干不参与训练）
 CSP Unseen acc 46.3% vs ResNet Unseen ≈ 0%。这是核心对比：朴素联合预测根本不具备零样本泛化能力，而组合提示范式天然具备。
 
 **发现 2：微调 > 冻结（VAW）**
-Exp E（YOLOv8m 微调）test mAP 60.6% > Exp F（DINOv2 冻结）55.3%。即使 DINOv2 是更现代、更强的自监督骨干，微调的劣质骨干仍然赢。属性识别需要骨干适配细粒度视觉特征。
+实验4（YOLOv8m 微调）test mAP 60.6% > 实验5（DINOv2 冻结）55.3%。即使 DINOv2 是更现代、更强的自监督骨干，微调的劣质骨干仍然赢。属性识别需要骨干适配细粒度视觉特征。
 
 **发现 3：物体条件化 > 物体联合预测（VAW）**
-Exp E 把物体当输入（条件化），Exp F 把物体当输出（联合预测）。前者 60.6% > 后者 55.3%，与 VAW 原论文结论一致，验证了"物体知识辅助属性识别"的设计有效性。
+实验4 把物体当输入（条件化），实验5 把物体当输出（联合预测）。前者 60.6% > 后者 55.3%，与 VAW 原论文结论一致，验证了"物体知识辅助属性识别"的设计有效性。
 
 **发现 4：骨干降级代价可量化**
 CSP 官方 ViT-L/14 AUC 19.4 vs 我们 ViT-B/16 AUC 16.25，差 3.15 AUC 点，与 CLIP ViT-L/14 vs B/16 的能力差异一致。硬件限制导致的数字差距有明确解释。
@@ -271,8 +271,8 @@ CSP 官方 ViT-L/14 AUC 19.4 vs 我们 ViT-B/16 AUC 16.25，差 3.15 AUC 点，�
 
 | 文件路径 | 内容 | 用途 |
 |---|---|---|
-| `runs/vaw_mtl/results.json` | Exp E 训练日志：每 epoch 的 loss/mAP + 测试结果 | 训练曲线图 |
-| `runs/vaw_mtl_dino/results.json` | Exp F 训练日志：每 epoch 的 obj_acc/attr_mAP + 测试结果 | 训练曲线图 |
+| `runs/vaw_mtl/results.json` | 实验4 训练日志：每 epoch 的 loss/mAP + 测试结果 | 训练曲线图 |
+| `runs/vaw_mtl_dino/results.json` | 实验5 训练日志：每 epoch 的 obj_acc/attr_mAP + 测试结果 | 训练曲线图 |
 | `czsl_csp/data/model/mit-states/csp_b16/` | CSP 每 2 epoch 保存一个 checkpoint | 评测不同 epoch |
 | `czsl_csp/data/mit-states/metadata_compositional-split-natural.t7` | MIT-States 所有样本的标注（物体、状态、图片路径、划分） | 数据分析/可视化 |
 | `czsl_csp/data/mit-states/compositional-split-natural/train_pairs.txt` | 训练组合列表 | 长尾分布分析 |
@@ -301,7 +301,7 @@ CSP 官方 ViT-L/14 AUC 19.4 vs 我们 ViT-B/16 AUC 16.25，差 3.15 AUC 点，�
 - Epoch 损失曲线，展示收敛过程
 
 **图 5（可选）：Seen vs Unseen 对比柱状图**
-- 对比 Exp A（ResNet：Seen 35%，Unseen 0%）和 Exp B（CSP：Seen 43%，Unseen 46%）
+- 对比 实验1（ResNet：Seen 35%，Unseen 0%）和 实验3（CSP：Seen 43%，Unseen 46%）
 - 直观展示零样本泛化的核心对比
 
 ---
@@ -378,13 +378,13 @@ CSP 官方 ViT-L/14 AUC 19.4 vs 我们 ViT-B/16 AUC 16.25，差 3.15 AUC 点，�
 
 需要写出的核心公式（用 LaTeX 格式）：
 
-**物体门控（Exp E，VAW）：**
+**物体门控（实验4，VAW）：**
 ```
 f_gated = f_img ⊙ σ(MLP(e_obj))
 ```
 其中 f_img ∈ ℝ^1280 为图像特征，e_obj ∈ ℝ^128 为物体 embedding，σ 为 sigmoid。
 
-**Kendall 不确定性加权（Exp F）：**
+**Kendall 不确定性加权（实验5）：**
 ```
 L = exp(-σ_1)·L_obj + 0.5·σ_1 + exp(-σ_2)·L_attr + 0.5·σ_2
 ```
@@ -463,7 +463,7 @@ HM = 2 × S × U / (S + U)
 
 [13] Kendall et al., "Multi-Task Learning Using Uncertainty to Weigh
      Losses for Scene Geometry and Semantics," CVPR 2018.
-     （Kendall 不确定性加权，Exp F 使用）
+     （Kendall 不确定性加权，实验5 使用）
 ```
 
 ---

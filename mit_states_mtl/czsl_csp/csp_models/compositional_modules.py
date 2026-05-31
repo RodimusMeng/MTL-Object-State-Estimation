@@ -1,7 +1,7 @@
 import os
 
-from models.coop import coop
-from models.csp import get_csp, get_mix_csp
+from csp_models.coop import coop
+from csp_models.csp import get_csp, get_mix_csp
 
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 

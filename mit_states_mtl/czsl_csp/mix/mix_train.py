@@ -13,10 +13,10 @@ import torch
 import tqdm
 
 sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
-from datasets.composition_dataset import (CompositionDataset, ImageLoader,
+from csp_data.composition_dataset import (CompositionDataset, ImageLoader,
                                           transform_image)
-from datasets.read_datasets import DATASET_PATHS
-from models.compositional_modules import get_model
+from csp_data.read_datasets import DATASET_PATHS
+from csp_models.compositional_modules import get_model
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data.dataloader import DataLoader
 from utils import set_seed

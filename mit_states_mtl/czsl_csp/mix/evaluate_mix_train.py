@@ -12,10 +12,10 @@ import torch.backends.cudnn as cudnn
 sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
 from clip_modules.interface import CLIPInterface
 from clip_modules.model_loader import load
-from datasets.composition_dataset import CompositionDataset
-from datasets.read_datasets import DATASET_PATHS
+from csp_data.composition_dataset import CompositionDataset
+from csp_data.read_datasets import DATASET_PATHS
 from evaluate import Evaluator, clip_baseline, compute_representations
-from models.compositional_modules import get_model
+from csp_models.compositional_modules import get_model
 from scipy.stats import hmean
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm

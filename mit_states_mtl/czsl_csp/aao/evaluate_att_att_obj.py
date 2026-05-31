@@ -14,10 +14,10 @@ import torch
 sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
 from clip_modules.interface import CLIPInterface
 from clip_modules.model_loader import load
-from datasets.composition_dataset import ImageLoader, transform_image
-from datasets.read_datasets import DATASET_PATHS
-from models.coop import coop
-from models.csp import CSPInterface, csp_init
+from csp_data.composition_dataset import ImageLoader, transform_image
+from csp_data.read_datasets import DATASET_PATHS
+from csp_models.coop import coop
+from csp_models.csp import CSPInterface, csp_init
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm

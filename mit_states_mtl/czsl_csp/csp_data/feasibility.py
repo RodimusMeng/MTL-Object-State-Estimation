@@ -7,8 +7,8 @@ import torch
 import torch.nn.functional as F
 from clip_modules.model_loader import load
 
-from datasets.composition_dataset import CompositionDataset
-from datasets.read_datasets import DATASET_PATHS
+from csp_data.composition_dataset import CompositionDataset
+from csp_data.read_datasets import DATASET_PATHS
 
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 
